@@ -6,6 +6,7 @@ $azdValues = azd env get-values
 $COSMOS_ENDPOINT = ($azdValues | Select-String 'COSMOS_ENDPOINT="(.*?)"').Matches.Groups[1].Value
 $COSMOS_DATABASE_NAME = ($azdValues | Select-String 'COSMOS_DATABASE_NAME="(.*?)"').Matches.Groups[1].Value
 $COSMOS_CONTAINER_NAME = ($azdValues | Select-String 'COSMOS_CONTAINER_NAME="(.*?)"').Matches.Groups[1].Value
+$COSMOS_KEY = ($azdValues | Select-String 'COSMOS_KEY="(.*?)"').Matches.Groups[1].Value
 $AI_PROJECT_CONNECTION_STRING = ($azdValues | Select-String 'AI_PROJECT_CONNECTION_STRING="(.*?)"').Matches.Groups[1].Value
 $AI_FOUNDRY_OPENAI_ENDPOINT = ($azdValues | Select-String 'AI_FOUNDRY_OPENAI_ENDPOINT="(.*?)"').Matches.Groups[1].Value
 $AI_FOUNDRY_OPENAI_KEY = ($azdValues | Select-String 'AI_FOUNDRY_OPENAI_KEY="(.*?)"').Matches.Groups[1].Value

@@ -23,7 +23,17 @@
 
 import json
 import logging
+import os
 import azure.functions as func
+from typing import Any, Dict
+
+from azure.storage.blob.aio import BlobServiceClient  # type: ignore
+
+try:
+    # Lazy import inside health check will also work, but importing here to surface import errors early
+    from data import cosmos_ops  # type: ignore
+except Exception as import_err:  # pragma: no cover - defensive
+    logging.error(f"Failed to import cosmos_ops during startup: {import_err}")
 
 app = func.FunctionApp()
 
@@ -112,18 +122,67 @@ async def http_health_check(req: func.HttpRequest) -> func.HttpResponse:
 # HTTP endpoint for health check
 @app.route(route="health_extended", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 async def http_health_check_extended(req: func.HttpRequest) -> func.HttpResponse:
-    """
-    Health check endpoint to verify the service is running.
-    
-    Returns:
-        JSON response with status "ok" and 200 status code
-    """
-    # TODO: verify connection to storage account and specifically INGESTION_CONTAINER is working (see environment variables)
-    # TODO: verify connection to cosmosDB is working
-    
-    logging.info("Extended Health check endpoint called")
+    """Extended health check including Storage & Cosmos connectivity."""
+    logging.info("Extended health check endpoint called")
+
+    storage_result: Dict[str, Any] = {"ok": False}
+    cosmos_result: Dict[str, Any] = {"ok": False}
+
+    # --- Storage account validation ---
+    try:
+        conn_str = os.environ.get("AzureWebJobsStorage") or os.environ.get("STORAGE_CONNECTION_STRING")
+        ingestion_container = (
+            os.environ.get("INGESTION_CONTAINER")
+            or os.environ.get("STORAGE_CONTAINER_SNIPPETINPUT")
+            or "snippet-input"
+        )
+        if not conn_str:
+            raise ValueError("Missing AzureWebJobsStorage/ STORAGE_CONNECTION_STRING env var")
+
+        blob_client = BlobServiceClient.from_connection_string(conn_str)
+        container_client = blob_client.get_container_client(ingestion_container)
+        await container_client.get_container_properties()
+        storage_result.update(
+            {
+                "ok": True,
+                "container": ingestion_container,
+                "account_url": blob_client.url,
+            }
+        )
+    except Exception as e:  # pragma: no cover - best effort diagnostics
+        logging.error(f"Storage health check failed: {e}")
+        storage_result.update({"error": str(e)})
+
+    # --- Cosmos DB validation ---
+    try:
+        # Attempt to get (and if needed create) the container
+        container = await cosmos_ops.get_container()  # type: ignore
+        # Light-weight query: attempt a single iterator to ensure RU path works
+        query_iter = container.query_items(query="SELECT TOP 1 c.id FROM c")
+        _ = [item async for item in query_iter][:1]
+        cosmos_result.update(
+            {
+                "ok": True,
+                "database": os.environ.get("COSMOS_DATABASE_NAME"),
+                "container": os.environ.get("COSMOS_CONTAINER_NAME"),
+            }
+        )
+    except Exception as e:  # pragma: no cover
+        logging.error(f"Cosmos health check failed: {e}")
+        cosmos_result.update({"error": str(e)})
+
+    overall_ok = storage_result.get("ok") and cosmos_result.get("ok")
+    status = "ok" if overall_ok else "error"
+    http_status = 200 if overall_ok else 500
+
+    body = {
+        "status": status,
+        "storage": storage_result,
+        "cosmos": cosmos_result,
+    }
+
     return func.HttpResponse(
-        body=json.dumps({"status": "I'm a teapot?!?"}),
+        body=json.dumps(body),
         mimetype="application/json",
-        status_code=418
+        status_code=http_status,
     )

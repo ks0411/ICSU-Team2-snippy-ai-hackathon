@@ -12,7 +12,7 @@ services:
 hooks:
   postprovision:
     windows:
-      shell: pwsh
+  shell: powershell
       run: ./scripts/generate-settings.ps1
       interactive: true
       continueOnError: false
