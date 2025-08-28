@@ -131,33 +131,50 @@ async def close_connections():
 # Upserts a document into Cosmos DB with vector embeddings
 # The document includes id, name, projectId, code, type, and embedding fields
 async def upsert_document(name: str, project_id: str, code: str, embedding: list, language: str = None, description: str = None) -> dict:
-    """
-    Upserts a document into Cosmos DB with vector embeddings.
-    
-    The document structure:
-    {
-        "id": name,
-        "name": name,  # partition key
-        "projectId": project_id,
-        "code": code,
-        "language": language,
-        "description": description,
-        "type": "code-snippet",
-        "embedding": embedding  # int8 quantized vector
-    }
-    
-    Args:
-        name: The name of the snippet (used as id and partition key)
-        project_id: The project ID
-        code: The code content
-        embedding: The int8 quantized embedding vector
-        
-    Returns:
-        The created/updated document
-        
-    Raises:
-        Exception: If document upsert fails
-    """
+    """Upserts a code snippet document with (optionally) quantized embedding."""
+    try:
+        logger.info(f"Upserting snippet '{name}' (project={project_id})")
+
+        if not isinstance(embedding, list):
+            raise ValueError("Embedding must be a list of floats")
+
+        # Simple int8 quantization (scale -1..1 -> -127..127) if floats provided
+        quantized_embedding = []
+        for v in embedding:
+            try:
+                # Clamp then scale
+                fv = float(v)
+                if fv > 1:
+                    fv = 1.0
+                if fv < -1:
+                    fv = -1.0
+                q = int(fv * 127)
+                quantized_embedding.append(q)
+            except Exception:  # pragma: no cover - defensive
+                quantized_embedding.append(0)
+
+        doc = {
+            "id": name,
+            "name": name,
+            "projectId": project_id,
+            "code": code,
+            "language": language,
+            "description": description,
+            "type": "code-snippet",
+            "embedding": quantized_embedding,
+        }
+
+        container = await get_container()
+        stored = await container.upsert_item(doc)
+        logger.info(f"Upserted snippet '{name}' successfully")
+        # Return a trimmed response (exclude full embedding for payload size)
+        stored_copy = dict(stored)
+        if "embedding" in stored_copy:
+            stored_copy["embedding_length"] = len(stored_copy.pop("embedding"))
+        return stored_copy
+    except Exception as e:
+        logger.error(f"Error upserting document: {e}", exc_info=True)
+        raise
 
 # Retrieves all snippets from Cosmos DB
 # Returns a list of all snippet documents
