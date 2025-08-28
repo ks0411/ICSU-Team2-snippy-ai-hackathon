@@ -13,9 +13,9 @@ hooks:
   postprovision:
     windows:
   shell: powershell
-      run: ./scripts/generate-settings.ps1
-      interactive: true
-      continueOnError: false
+  run: ./scripts/generate-settings.ps1
+  interactive: true
+  continueOnError: false
     posix:
       shell: sh
       run: ./scripts/generate-settings.sh
