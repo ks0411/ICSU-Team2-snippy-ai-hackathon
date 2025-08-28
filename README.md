@@ -19,6 +19,7 @@ urlFragment: snippy
 ---
 -->
 
+
 <p align="center">
   <img src=".github/assets/snippy-logo-large.png" alt="Snippy logo" width="150"><br>
   <b>Snippy · Intelligent Code-Snippet Service with MCP Tools</b>
